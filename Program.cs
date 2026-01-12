@@ -1,11 +1,39 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Web.Script.Serialization;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 
 namespace SyncthingRun
 {
+    public class IniFile
+    {
+        private string path;
+
+        [DllImport("kernel32")]
+        private static extern long WritePrivateProfileString(string section, string key, string val, string filePath);
+
+        [DllImport("kernel32")]
+        private static extern int GetPrivateProfileString(string section, string key, string def, StringBuilder retVal, int size, string filePath);
+
+        public IniFile(string filePath)
+        {
+            path = filePath;
+        }
+
+        public void Write(string section, string key, string value)
+        {
+            WritePrivateProfileString(section, key, value, path);
+        }
+
+        public string Read(string section, string key, string defaultValue = "")
+        {
+            StringBuilder retVal = new StringBuilder(255);
+            GetPrivateProfileString(section, key, defaultValue, retVal, 255, path);
+            return retVal.ToString();
+        }
+    }
     internal static class Program
     {
         [STAThread]
@@ -30,8 +58,7 @@ namespace SyncthingRun
         public string SyncthingExePath { get; set; } = "";
         public bool AutoStartSyncthing { get; set; } = false;
 
-        public static string ConfigFilePath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "syncthing-run.json");
-        private static readonly JavaScriptSerializer serializer = new JavaScriptSerializer();
+        public static string ConfigFilePath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "syncthing-run.ini");
 
         public static Config Load()
         {
@@ -39,11 +66,12 @@ namespace SyncthingRun
             {
                 if (File.Exists(ConfigFilePath))
                 {
-                    var json = File.ReadAllText(ConfigFilePath);
-                    var config = serializer.Deserialize<Config>(json);
+                    var ini = new IniFile(ConfigFilePath);
+                    var config = new Config();
                     
-                    // 清理旧的StartupEnabled配置项
-                    CleanOldConfig(config);
+                    config.SyncthingExePath = ini.Read("Settings", "SyncthingExePath", "");
+                    var autoStartValue = ini.Read("Settings", "AutoStartSyncthing", "False");
+                    config.AutoStartSyncthing = autoStartValue.ToLower() == "true";
                     
                     return config;
                 }
@@ -55,45 +83,17 @@ namespace SyncthingRun
 
             // 使用默认配置
             var defaultConfig = new Config();
-            CleanOldConfig(defaultConfig);
             defaultConfig.Save();
             return defaultConfig;
-        }
-
-        private static void CleanOldConfig(Config config)
-        {
-            try
-            {
-                // 读取现有配置文件
-                if (File.Exists(ConfigFilePath))
-                {
-                    var json = File.ReadAllText(ConfigFilePath);
-                    if (!string.IsNullOrWhiteSpace(json))
-                    {
-                        // 检查是否有StartupEnabled属性
-                        var tempConfig = serializer.Deserialize<Dictionary<string, object>>(json);
-                        if (tempConfig.ContainsKey("StartupEnabled"))
-                        {
-                            tempConfig.Remove("StartupEnabled");
-                            var cleanedJson = serializer.Serialize(tempConfig);
-                            File.WriteAllText(ConfigFilePath, cleanedJson);
-                            Log.Info("已清理旧的StartupEnabled配置项");
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // 清理失败也不影响，下次保存时会正常
-            }
         }
 
         public void Save()
         {
             try
             {
-                var json = serializer.Serialize(this);
-                File.WriteAllText(ConfigFilePath, json);
+                var ini = new IniFile(ConfigFilePath);
+                ini.Write("Settings", "SyncthingExePath", SyncthingExePath ?? "");
+                ini.Write("Settings", "AutoStartSyncthing", AutoStartSyncthing.ToString());
             }
             catch (Exception ex)
             {

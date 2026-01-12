@@ -4,9 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Linq;
 using System.Text.RegularExpressions;
-using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -589,34 +587,16 @@ namespace SyncthingRun
         {
             try
             {
-                string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "syncthing-run.json");
-                
-                if (!File.Exists(configPath))
-                {
-                    MessageBox.Show("未找到配置文件", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-
-                // 直接读取JSON文件并解析
-                var json = File.ReadAllText(configPath);
-                var serializer = new JavaScriptSerializer();
-                var configData = serializer.Deserialize<Dictionary<string, object>>(json);
-                
-                // 获取配置值
-                string syncthingPath = configData.ContainsKey("SyncthingExePath") 
-                    ? configData["SyncthingExePath"].ToString() 
-                    : "未设置";
-                
-                bool autoStart = configData.ContainsKey("AutoStartSyncthing") 
-                    && Convert.ToBoolean(configData["AutoStartSyncthing"]);
-                
-                string autoStartText = autoStart ? "是" : "否";
-                
-                // 如果路径为空，显示"未设置"
+                // 实时从INI文件读取配置
+                var ini = new IniFile(Config.ConfigFilePath);
+                string syncthingPath = ini.Read("Settings", "SyncthingExePath", "");
                 if (string.IsNullOrWhiteSpace(syncthingPath))
                 {
                     syncthingPath = "未设置";
                 }
+                
+                var autoStartValue = ini.Read("Settings", "AutoStartSyncthing", "False");
+                string autoStartText = autoStartValue.ToLower() == "true" ? "是" : "否";
                 
                 string message = $"当前托盘配置：\n\n" +
                                 $"Syncthing.exe路径：{syncthingPath}\n" +
